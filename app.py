@@ -1,56 +1,173 @@
 import streamlit as st
 import pandas as pd
-import os
+import sqlite3
 import hashlib
-from datetime import date
+import plotly.express as px
+from datetime import datetime, date
 
-# ---------------- CONFIG ----------------
+DB_NAME = "hotel_system.db"
+
 st.set_page_config(
-    page_title="Hotel Reservation System",
+    page_title="HotelPro Reservation System",
     page_icon="🏨",
     layout="wide"
 )
 
-DATA_DIR = "data"
-OWNERS_FILE = f"{DATA_DIR}/owners.csv"
-HOTELS_FILE = f"{DATA_DIR}/hotels.csv"
-ROOMS_FILE = f"{DATA_DIR}/rooms.csv"
-RESERVATIONS_FILE = f"{DATA_DIR}/reservations.csv"
+# ---------------- STYLE ----------------
+st.markdown("""
+<style>
+.big-title {
+    font-size: 42px;
+    font-weight: 800;
+    color: #0f172a;
+}
+.subtitle {
+    font-size: 18px;
+    color: #475569;
+}
+.card {
+    background: white;
+    padding: 24px;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+</style>
+""", unsafe_allow_html=True)
 
-os.makedirs(DATA_DIR, exist_ok=True)
+
+# ---------------- DATABASE ----------------
+def get_connection():
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
 
 
-# ---------------- HELPERS ----------------
+def now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS owners (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS hotels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        hotel_name TEXT,
+        location TEXT,
+        phone TEXT,
+        description TEXT,
+        amenities TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS rooms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        room_number TEXT,
+        room_type TEXT,
+        price INTEGER,
+        capacity INTEGER,
+        status TEXT,
+        description TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        room_id INTEGER,
+        customer_name TEXT,
+        customer_email TEXT,
+        customer_phone TEXT,
+        guests INTEGER,
+        check_in TEXT,
+        check_out TEXT,
+        nights INTEGER,
+        total_price INTEGER,
+        status TEXT,
+        created_at TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def execute_query(query, params=()):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    conn.commit()
+    conn.close()
+
+
+def fetch_all(query, params=()):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    data = cur.fetchall()
+    conn.close()
+    return data
+
+
+def fetch_one(query, params=()):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    data = cur.fetchone()
+    conn.close()
+    return data
+
+
+init_db()
+
+
+# ---------------- AUTH ----------------
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def init_files():
-    if not os.path.exists(OWNERS_FILE):
-        pd.DataFrame(columns=["username", "password"]).to_csv(OWNERS_FILE, index=False)
+def signup_owner(name, email, password):
+    existing = fetch_one("SELECT id FROM owners WHERE email = ?", (email,))
 
-    if not os.path.exists(HOTELS_FILE):
-        pd.DataFrame(columns=["owner", "hotel_name", "location", "phone"]).to_csv(HOTELS_FILE, index=False)
+    if existing:
+        return False, "Email already registered."
 
-    if not os.path.exists(ROOMS_FILE):
-        pd.DataFrame(columns=["owner", "room_name", "room_type", "price", "available"]).to_csv(ROOMS_FILE, index=False)
+    execute_query(
+        "INSERT INTO owners (name, email, password, created_at) VALUES (?, ?, ?, ?)",
+        (name, email, hash_password(password), now())
+    )
 
-    if not os.path.exists(RESERVATIONS_FILE):
-        pd.DataFrame(columns=[
-            "owner", "customer_name", "email", "phone", "room_name",
-            "check_in", "check_out", "guests", "total_price", "status"
-        ]).to_csv(RESERVATIONS_FILE, index=False)
+    return True, "Account created successfully."
 
 
-def read_csv(file):
-    return pd.read_csv(file)
+def login_owner(email, password):
+    owner = fetch_one(
+        "SELECT id, name, email FROM owners WHERE email = ? AND password = ?",
+        (email, hash_password(password))
+    )
 
+    if owner:
+        return True, {
+            "id": owner[0],
+            "name": owner[1],
+            "email": owner[2]
+        }
 
-def save_csv(df, file):
-    df.to_csv(file, index=False)
-
-
-init_files()
+    return False, None
 
 
 # ---------------- SESSION ----------------
@@ -61,293 +178,383 @@ if "owner" not in st.session_state:
     st.session_state.owner = None
 
 
-# ---------------- CSS ----------------
-st.markdown("""
-<style>
-.main-title {
-    font-size: 42px;
-    font-weight: 800;
-    color: #1f2937;
-}
-.card {
-    padding: 25px;
-    border-radius: 14px;
-    background-color: #f8fafc;
-    border: 1px solid #e5e7eb;
-}
-.metric-card {
-    padding: 20px;
-    background-color: #ffffff;
-    border-radius: 14px;
-    border: 1px solid #e5e7eb;
-    text-align: center;
-}
-</style>
-""", unsafe_allow_html=True)
+def currency(amount):
+    return f"PKR {int(amount):,}"
 
 
-# ---------------- AUTH ----------------
-def signup():
-    st.subheader("Create Owner Account")
-
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    confirm = st.text_input("Confirm Password", type="password")
-
-    if st.button("Signup"):
-        owners = read_csv(OWNERS_FILE)
-
-        if username == "" or password == "":
-            st.error("Please fill all fields.")
-        elif username in owners["username"].values:
-            st.error("Username already exists.")
-        elif password != confirm:
-            st.error("Passwords do not match.")
-        else:
-            new_owner = pd.DataFrame([{
-                "username": username,
-                "password": hash_password(password)
-            }])
-            owners = pd.concat([owners, new_owner], ignore_index=True)
-            save_csv(owners, OWNERS_FILE)
-            st.success("Account created successfully. Please login now.")
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.owner = None
+    st.rerun()
 
 
-def login():
-    st.subheader("Owner Login")
+# ---------------- AUTH PAGES ----------------
+def login_page():
+    st.markdown('<div class="big-title">🏨 HotelPro Owner Login</div>', unsafe_allow_html=True)
+    st.write("Login to manage your hotel, rooms, bookings, and revenue.")
 
-    username = st.text_input("Username")
+    email = st.text_input("Email")
     password = st.text_input("Password", type="password")
 
-    if st.button("Login"):
-        owners = read_csv(OWNERS_FILE)
-        hashed = hash_password(password)
+    if st.button("Login", use_container_width=True):
+        success, owner = login_owner(email, password)
 
-        match = owners[
-            (owners["username"] == username) &
-            (owners["password"] == hashed)
-        ]
-
-        if not match.empty:
+        if success:
             st.session_state.logged_in = True
-            st.session_state.owner = username
+            st.session_state.owner = owner
             st.success("Login successful.")
             st.rerun()
         else:
-            st.error("Invalid username or password.")
+            st.error("Invalid email or password.")
+
+
+def signup_page():
+    st.markdown('<div class="big-title">Create Owner Account</div>', unsafe_allow_html=True)
+
+    name = st.text_input("Owner Name")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    confirm = st.text_input("Confirm Password", type="password")
+
+    if st.button("Create Account", use_container_width=True):
+        if not name or not email or not password:
+            st.error("Please fill all fields.")
+        elif password != confirm:
+            st.error("Passwords do not match.")
+        elif len(password) < 6:
+            st.error("Password must be at least 6 characters.")
+        else:
+            success, message = signup_owner(name, email, password)
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
 
 
 # ---------------- PUBLIC BOOKING ----------------
-def public_booking():
-    hotels = read_csv(HOTELS_FILE)
-    rooms = read_csv(ROOMS_FILE)
+def public_booking_page():
+    st.markdown('<div class="big-title">Book Your Hotel Room</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Search available rooms and confirm reservation instantly.</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="main-title">🏨 Hotel Reservation System</div>', unsafe_allow_html=True)
-    st.write("Book rooms easily and quickly.")
+    hotels = fetch_all("""
+        SELECT hotels.id, hotels.owner_id, hotels.hotel_name, hotels.location, hotels.phone, hotels.description
+        FROM hotels
+        JOIN rooms ON hotels.owner_id = rooms.owner_id
+        WHERE rooms.status = 'Available'
+        GROUP BY hotels.owner_id
+    """)
 
-    if hotels.empty:
-        st.warning("No hotel available yet.")
+    if not hotels:
+        st.warning("No hotels with available rooms right now. Owner ko pehle hotel profile aur rooms add karne honge.")
         return
 
-    hotel_names = hotels["hotel_name"].tolist()
-    selected_hotel = st.selectbox("Select Hotel", hotel_names)
+    hotel_options = {f"{h[2]} - {h[3]}": h for h in hotels}
+    selected_hotel_name = st.selectbox("Select Hotel", list(hotel_options.keys()))
+    hotel = hotel_options[selected_hotel_name]
 
-    hotel = hotels[hotels["hotel_name"] == selected_hotel].iloc[0]
-    owner = hotel["owner"]
+    hotel_id, owner_id, hotel_name, location, phone, description = hotel
 
-    st.info(f"📍 Location: {hotel['location']} | ☎ Phone: {hotel['phone']}")
+    st.markdown(f"""
+    <div class="card">
+        <h3>{hotel_name}</h3>
+        <p>📍 {location}</p>
+        <p>☎ {phone}</p>
+        <p>{description}</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    hotel_rooms = rooms[
-        (rooms["owner"] == owner) &
-        (rooms["available"] == "Yes")
-    ]
+    rooms = fetch_all("""
+        SELECT id, room_number, room_type, price, capacity, description
+        FROM rooms
+        WHERE owner_id = ? AND status = 'Available'
+    """, (owner_id,))
 
-    if hotel_rooms.empty:
-        st.warning("No available rooms for this hotel.")
-        return
+    room_options = {
+        f"Room {r[1]} | {r[2]} | {currency(r[3])}/night | Capacity {r[4]}": r
+        for r in rooms
+    }
 
-    room_names = hotel_rooms["room_name"].tolist()
-    selected_room = st.selectbox("Select Room", room_names)
+    selected_room_label = st.selectbox("Select Room", list(room_options.keys()))
+    room = room_options[selected_room_label]
 
-    room = hotel_rooms[hotel_rooms["room_name"] == selected_room].iloc[0]
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"Room Type: **{room['room_type']}**")
-    with col2:
-        st.write(f"Price/Night: **${room['price']}**")
+    room_id, room_number, room_type, price, capacity, room_description = room
 
     st.divider()
 
-    name = st.text_input("Customer Name")
-    email = st.text_input("Email")
-    phone = st.text_input("Phone")
-    guests = st.number_input("Guests", min_value=1, max_value=10)
+    col1, col2 = st.columns(2)
 
-    check_in = st.date_input("Check-in Date", min_value=date.today())
-    check_out = st.date_input("Check-out Date", min_value=date.today())
+    with col1:
+        customer_name = st.text_input("Customer Name")
+        customer_email = st.text_input("Customer Email")
+        customer_phone = st.text_input("Customer Phone")
+
+    with col2:
+        guests = st.number_input("Guests", min_value=1, max_value=int(capacity))
+        check_in = st.date_input("Check-in", min_value=date.today())
+        check_out = st.date_input("Check-out", min_value=date.today())
 
     if check_out > check_in:
         nights = (check_out - check_in).days
-        total = nights * int(room["price"])
-        st.success(f"Total Nights: {nights}")
-        st.info(f"Total Price: ${total}")
+        total_price = nights * int(price)
+
+        st.success(f"Nights: {nights}")
+        st.info(f"Total Price: {currency(total_price)}")
     else:
-        total = 0
+        nights = 0
+        total_price = 0
         st.warning("Check-out date must be after check-in date.")
 
-    if st.button("Confirm Booking"):
-        if name and email and phone and check_out > check_in:
-            reservations = read_csv(RESERVATIONS_FILE)
+    if st.button("Confirm Booking", use_container_width=True):
+        if customer_name and customer_email and customer_phone and nights > 0:
+            execute_query("""
+                INSERT INTO bookings (
+                    owner_id, room_id, customer_name, customer_email, customer_phone,
+                    guests, check_in, check_out, nights, total_price, status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                owner_id, room_id, customer_name, customer_email, customer_phone,
+                guests, str(check_in), str(check_out), nights, total_price,
+                "Confirmed", now()
+            ))
 
-            new_booking = pd.DataFrame([{
-                "owner": owner,
-                "customer_name": name,
-                "email": email,
-                "phone": phone,
-                "room_name": selected_room,
-                "check_in": check_in,
-                "check_out": check_out,
-                "guests": guests,
-                "total_price": total,
-                "status": "Confirmed"
-            }])
+            execute_query(
+                "UPDATE rooms SET status = 'Booked' WHERE id = ?",
+                (room_id,)
+            )
 
-            reservations = pd.concat([reservations, new_booking], ignore_index=True)
-            save_csv(reservations, RESERVATIONS_FILE)
-
-            st.success("Booking confirmed successfully!")
+            st.success("Booking confirmed successfully.")
         else:
             st.error("Please complete all fields correctly.")
 
 
-# ---------------- OWNER DASHBOARD ----------------
-def owner_dashboard():
+# ---------------- DASHBOARD ----------------
+def dashboard_home(owner_id):
+    st.markdown('<div class="big-title">Owner Dashboard</div>', unsafe_allow_html=True)
+
+    total_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ?", (owner_id,))[0]
+    available_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ? AND status = 'Available'", (owner_id,))[0]
+    total_bookings = fetch_one("SELECT COUNT(*) FROM bookings WHERE owner_id = ?", (owner_id,))[0]
+    revenue = fetch_one("SELECT COALESCE(SUM(total_price), 0) FROM bookings WHERE owner_id = ?", (owner_id,))[0]
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Total Rooms", total_rooms)
+    col2.metric("Available Rooms", available_rooms)
+    col3.metric("Bookings", total_bookings)
+    col4.metric("Revenue", currency(revenue))
+
+    bookings = fetch_all("""
+        SELECT created_at, total_price, status
+        FROM bookings
+        WHERE owner_id = ?
+        ORDER BY created_at DESC
+    """, (owner_id,))
+
+    if bookings:
+        df = pd.DataFrame(bookings, columns=["Created At", "Revenue", "Status"])
+        df["Created At"] = pd.to_datetime(df["Created At"]).dt.date
+
+        chart_df = df.groupby("Created At")["Revenue"].sum().reset_index()
+        fig = px.line(chart_df, x="Created At", y="Revenue", title="Revenue Trend")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Recent Bookings")
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No booking data yet.")
+
+
+def hotel_profile(owner_id):
+    st.markdown('<div class="big-title">Hotel Profile</div>', unsafe_allow_html=True)
+
+    hotel = fetch_one("""
+        SELECT hotel_name, location, phone, description, amenities
+        FROM hotels
+        WHERE owner_id = ?
+    """, (owner_id,))
+
+    hotel_name = st.text_input("Hotel Name", value=hotel[0] if hotel else "")
+    location = st.text_input("Location", value=hotel[1] if hotel else "")
+    phone = st.text_input("Phone", value=hotel[2] if hotel else "")
+    description = st.text_area("Hotel Description", value=hotel[3] if hotel else "")
+    amenities = st.text_area("Amenities", value=hotel[4] if hotel else "WiFi, Parking, AC, Restaurant")
+
+    if st.button("Save Hotel Profile", use_container_width=True):
+        if not hotel_name or not location:
+            st.error("Hotel name and location are required.")
+            return
+
+        existing = fetch_one("SELECT id FROM hotels WHERE owner_id = ?", (owner_id,))
+
+        if existing:
+            execute_query("""
+                UPDATE hotels
+                SET hotel_name = ?, location = ?, phone = ?, description = ?, amenities = ?
+                WHERE owner_id = ?
+            """, (hotel_name, location, phone, description, amenities, owner_id))
+        else:
+            execute_query("""
+                INSERT INTO hotels (owner_id, hotel_name, location, phone, description, amenities)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (owner_id, hotel_name, location, phone, description, amenities))
+
+        st.success("Hotel profile saved successfully.")
+
+
+def manage_rooms(owner_id):
+    st.markdown('<div class="big-title">Manage Rooms</div>', unsafe_allow_html=True)
+
+    with st.expander("Add New Room", expanded=True):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            room_number = st.text_input("Room Number")
+            room_type = st.selectbox("Room Type", ["Single", "Double", "Deluxe", "Suite", "Family"])
+            price = st.number_input("Price per Night", min_value=1000, step=500)
+
+        with col2:
+            capacity = st.number_input("Capacity", min_value=1, max_value=10)
+            status = st.selectbox("Room Status", ["Available", "Booked", "Maintenance"])
+            description = st.text_area("Room Description")
+
+        if st.button("Add Room", use_container_width=True):
+            if room_number:
+                execute_query("""
+                    INSERT INTO rooms (
+                        owner_id, room_number, room_type, price, capacity, status, description
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (owner_id, room_number, room_type, price, capacity, status, description))
+
+                st.success("Room added successfully.")
+                st.rerun()
+            else:
+                st.error("Room number is required.")
+
+    rooms = fetch_all("""
+        SELECT id, room_number, room_type, price, capacity, status, description
+        FROM rooms
+        WHERE owner_id = ?
+        ORDER BY id DESC
+    """, (owner_id,))
+
+    if rooms:
+        df = pd.DataFrame(
+            rooms,
+            columns=["ID", "Room Number", "Type", "Price", "Capacity", "Status", "Description"]
+        )
+        st.dataframe(df, use_container_width=True)
+
+        st.subheader("Update Room Status")
+        room_ids = df["ID"].tolist()
+        selected_id = st.selectbox("Select Room ID", room_ids)
+        new_status = st.selectbox("New Status", ["Available", "Booked", "Maintenance"])
+
+        if st.button("Update Status"):
+            execute_query("UPDATE rooms SET status = ? WHERE id = ?", (new_status, selected_id))
+            st.success("Room status updated.")
+            st.rerun()
+    else:
+        st.info("No rooms added yet.")
+
+
+def reservations(owner_id):
+    st.markdown('<div class="big-title">Reservations</div>', unsafe_allow_html=True)
+
+    data = fetch_all("""
+        SELECT 
+            bookings.id,
+            rooms.room_number,
+            rooms.room_type,
+            bookings.customer_name,
+            bookings.customer_email,
+            bookings.customer_phone,
+            bookings.guests,
+            bookings.check_in,
+            bookings.check_out,
+            bookings.nights,
+            bookings.total_price,
+            bookings.status
+        FROM bookings
+        JOIN rooms ON bookings.room_id = rooms.id
+        WHERE bookings.owner_id = ?
+        ORDER BY bookings.id DESC
+    """, (owner_id,))
+
+    if not data:
+        st.info("No reservations yet.")
+        return
+
+    df = pd.DataFrame(data, columns=[
+        "Booking ID", "Room", "Type", "Customer", "Email", "Phone",
+        "Guests", "Check-in", "Check-out", "Nights", "Total", "Status"
+    ])
+
+    st.dataframe(df, use_container_width=True)
+
+    st.subheader("Update Booking Status")
+    booking_id = st.selectbox("Select Booking ID", df["Booking ID"].tolist())
+    status = st.selectbox("Status", ["Confirmed", "Checked In", "Checked Out", "Cancelled"])
+
+    if st.button("Update Booking"):
+        execute_query("UPDATE bookings SET status = ? WHERE id = ?", (status, booking_id))
+
+        if status in ["Checked Out", "Cancelled"]:
+            room_id = fetch_one("SELECT room_id FROM bookings WHERE id = ?", (booking_id,))[0]
+            execute_query("UPDATE rooms SET status = 'Available' WHERE id = ?", (room_id,))
+
+        st.success("Booking updated successfully.")
+        st.rerun()
+
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download Reservations CSV",
+        csv,
+        "reservations.csv",
+        "text/csv",
+        use_container_width=True
+    )
+
+
+def owner_app():
     owner = st.session_state.owner
+    owner_id = owner["id"]
 
-    st.sidebar.success(f"Logged in as: {owner}")
+    st.sidebar.title("HotelPro")
+    st.sidebar.success(f"Owner: {owner['name']}")
 
-    menu = st.sidebar.radio(
-        "Owner Dashboard",
+    page = st.sidebar.radio(
+        "Menu",
         ["Dashboard", "Hotel Profile", "Manage Rooms", "Reservations", "Logout"]
     )
 
-    if menu == "Dashboard":
-        st.markdown('<div class="main-title">📊 Owner Dashboard</div>', unsafe_allow_html=True)
-
-        hotels = read_csv(HOTELS_FILE)
-        rooms = read_csv(ROOMS_FILE)
-        reservations = read_csv(RESERVATIONS_FILE)
-
-        my_rooms = rooms[rooms["owner"] == owner]
-        my_res = reservations[reservations["owner"] == owner]
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric("Total Rooms", len(my_rooms))
-
-        with col2:
-            st.metric("Total Reservations", len(my_res))
-
-        with col3:
-            revenue = my_res["total_price"].sum() if not my_res.empty else 0
-            st.metric("Total Revenue", f"${revenue}")
-
-    elif menu == "Hotel Profile":
-        st.markdown('<div class="main-title">🏨 Hotel Profile</div>', unsafe_allow_html=True)
-
-        hotels = read_csv(HOTELS_FILE)
-        existing = hotels[hotels["owner"] == owner]
-
-        hotel_name = st.text_input(
-            "Hotel Name",
-            value=existing.iloc[0]["hotel_name"] if not existing.empty else ""
-        )
-
-        location = st.text_input(
-            "Location",
-            value=existing.iloc[0]["location"] if not existing.empty else ""
-        )
-
-        phone = st.text_input(
-            "Hotel Phone",
-            value=existing.iloc[0]["phone"] if not existing.empty else ""
-        )
-
-        if st.button("Save Hotel Profile"):
-            hotels = hotels[hotels["owner"] != owner]
-
-            new_hotel = pd.DataFrame([{
-                "owner": owner,
-                "hotel_name": hotel_name,
-                "location": location,
-                "phone": phone
-            }])
-
-            hotels = pd.concat([hotels, new_hotel], ignore_index=True)
-            save_csv(hotels, HOTELS_FILE)
-
-            st.success("Hotel profile saved successfully.")
-
-    elif menu == "Manage Rooms":
-        st.markdown('<div class="main-title">🛏 Manage Rooms</div>', unsafe_allow_html=True)
-
-        rooms = read_csv(ROOMS_FILE)
-
-        with st.form("add_room_form"):
-            room_name = st.text_input("Room Name / Number")
-            room_type = st.selectbox("Room Type", ["Single", "Double", "Deluxe", "Suite"])
-            price = st.number_input("Price per Night", min_value=1)
-            available = st.selectbox("Available", ["Yes", "No"])
-
-            submitted = st.form_submit_button("Add Room")
-
-            if submitted:
-                new_room = pd.DataFrame([{
-                    "owner": owner,
-                    "room_name": room_name,
-                    "room_type": room_type,
-                    "price": price,
-                    "available": available
-                }])
-
-                rooms = pd.concat([rooms, new_room], ignore_index=True)
-                save_csv(rooms, ROOMS_FILE)
-                st.success("Room added successfully.")
-
-        st.subheader("Your Rooms")
-        my_rooms = rooms[rooms["owner"] == owner]
-        st.dataframe(my_rooms, use_container_width=True)
-
-    elif menu == "Reservations":
-        st.markdown('<div class="main-title">📋 Reservations</div>', unsafe_allow_html=True)
-
-        reservations = read_csv(RESERVATIONS_FILE)
-        my_res = reservations[reservations["owner"] == owner]
-
-        if my_res.empty:
-            st.info("No reservations yet.")
-        else:
-            st.dataframe(my_res, use_container_width=True)
-
-    elif menu == "Logout":
-        st.session_state.logged_in = False
-        st.session_state.owner = None
-        st.rerun()
+    if page == "Dashboard":
+        dashboard_home(owner_id)
+    elif page == "Hotel Profile":
+        hotel_profile(owner_id)
+    elif page == "Manage Rooms":
+        manage_rooms(owner_id)
+    elif page == "Reservations":
+        reservations(owner_id)
+    elif page == "Logout":
+        logout()
 
 
-# ---------------- MAIN APP ----------------
-st.sidebar.title("Navigation")
-
+# ---------------- MAIN ----------------
 if st.session_state.logged_in:
-    owner_dashboard()
+    owner_app()
 else:
-    page = st.sidebar.radio("Go to", ["Book Room", "Owner Login", "Owner Signup"])
+    st.sidebar.title("HotelPro")
+
+    page = st.sidebar.radio(
+        "Navigation",
+        ["Book Room", "Owner Login", "Owner Signup"]
+    )
 
     if page == "Book Room":
-        public_booking()
+        public_booking_page()
     elif page == "Owner Login":
-        login()
+        login_page()
     elif page == "Owner Signup":
-        signup()
+        signup_page()
