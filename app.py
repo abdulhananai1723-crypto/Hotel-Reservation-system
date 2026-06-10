@@ -13,24 +13,120 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- STYLE ----------------
+# ---------------- PREMIUM STYLE ----------------
 st.markdown("""
 <style>
-.big-title {
-    font-size: 42px;
-    font-weight: 800;
-    color: #0f172a;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
 }
+
+.stApp {
+    background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 45%, #fff7ed 100%);
+}
+
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+.big-title {
+    font-size: 44px;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1.1;
+}
+
 .subtitle {
     font-size: 18px;
     color: #475569;
+    margin-top: 10px;
+    margin-bottom: 25px;
 }
+
+.hero {
+    padding: 48px;
+    border-radius: 30px;
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #f97316 100%);
+    color: white;
+    box-shadow: 0 25px 60px rgba(37, 99, 235, 0.28);
+    margin-bottom: 30px;
+}
+
+.hero h1 {
+    font-size: 54px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: white;
+}
+
+.hero p {
+    font-size: 19px;
+    color: #e0e7ff;
+}
+
 .card {
+    background: rgba(255,255,255,0.95);
+    padding: 28px;
+    border-radius: 24px;
+    border: 1px solid rgba(226,232,240,0.9);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    margin-bottom: 20px;
+}
+
+.feature-card {
     background: white;
     padding: 24px;
-    border-radius: 18px;
+    border-radius: 22px;
     border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+    text-align: center;
+    min-height: 150px;
+}
+
+.feature-card h3 {
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.feature-card p {
+    color: #64748b;
+}
+
+div.stButton > button {
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    padding: 0.75rem 1rem;
+    font-weight: 700;
+    box-shadow: 0 10px 25px rgba(37,99,235,0.25);
+}
+
+div.stButton > button:hover {
+    background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+    color: white;
+    transform: translateY(-1px);
+}
+
+[data-testid="stMetric"] {
+    background: white;
+    padding: 20px;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+}
+
+.stAlert {
+    border-radius: 16px;
+}
+
+input, textarea, select {
+    border-radius: 12px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -190,8 +286,10 @@ def logout():
 
 # ---------------- AUTH PAGES ----------------
 def login_page():
-    st.markdown('<div class="big-title">🏨 HotelPro Owner Login</div>', unsafe_allow_html=True)
-    st.write("Login to manage your hotel, rooms, bookings, and revenue.")
+    st.markdown('<div class="big-title">🏨 Owner Login</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Login to manage your hotel, rooms, bookings and revenue.</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
 
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
@@ -207,9 +305,14 @@ def login_page():
         else:
             st.error("Invalid email or password.")
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 def signup_page():
     st.markdown('<div class="big-title">Create Owner Account</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Create your hotel owner account and start managing your property.</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
 
     name = st.text_input("Owner Name")
     email = st.text_input("Email")
@@ -230,11 +333,45 @@ def signup_page():
             else:
                 st.error(message)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ---------------- PUBLIC BOOKING ----------------
 def public_booking_page():
-    st.markdown('<div class="big-title">Book Your Hotel Room</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Search available rooms and confirm reservation instantly.</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="hero">
+        <h1>Luxury Hotel Booking System</h1>
+        <p>Book premium rooms instantly with a modern hotel reservation platform.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>🏨 Premium Hotels</h3>
+            <p>Find professional hotels with available rooms.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>⚡ Instant Booking</h3>
+            <p>Confirm reservations quickly and securely.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>📊 Owner Dashboard</h3>
+            <p>Manage hotels, rooms, bookings and revenue.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("## Available Hotels")
 
     hotels = fetch_all("""
         SELECT hotels.id, hotels.owner_id, hotels.hotel_name, hotels.location, hotels.phone, hotels.description
@@ -256,9 +393,9 @@ def public_booking_page():
 
     st.markdown(f"""
     <div class="card">
-        <h3>{hotel_name}</h3>
-        <p>📍 {location}</p>
-        <p>☎ {phone}</p>
+        <h2>{hotel_name}</h2>
+        <p><b>📍 Location:</b> {location}</p>
+        <p><b>☎ Phone:</b> {phone}</p>
         <p>{description}</p>
     </div>
     """, unsafe_allow_html=True)
@@ -279,7 +416,18 @@ def public_booking_page():
 
     room_id, room_number, room_type, price, capacity, room_description = room
 
-    st.divider()
+    st.markdown(f"""
+    <div class="card">
+        <h3>Selected Room</h3>
+        <p><b>Room Number:</b> {room_number}</p>
+        <p><b>Room Type:</b> {room_type}</p>
+        <p><b>Price:</b> {currency(price)} per night</p>
+        <p><b>Capacity:</b> {capacity} guests</p>
+        <p>{room_description}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("## Customer Details")
 
     col1, col2 = st.columns(2)
 
@@ -297,8 +445,9 @@ def public_booking_page():
         nights = (check_out - check_in).days
         total_price = nights * int(price)
 
-        st.success(f"Nights: {nights}")
-        st.info(f"Total Price: {currency(total_price)}")
+        col_a, col_b = st.columns(2)
+        col_a.success(f"Nights: {nights}")
+        col_b.info(f"Total Price: {currency(total_price)}")
     else:
         nights = 0
         total_price = 0
@@ -324,16 +473,19 @@ def public_booking_page():
             )
 
             st.success("Booking confirmed successfully.")
+            st.balloons()
         else:
             st.error("Please complete all fields correctly.")
 
 
-# ---------------- DASHBOARD ----------------
+# ---------------- OWNER DASHBOARD ----------------
 def dashboard_home(owner_id):
     st.markdown('<div class="big-title">Owner Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Track your hotel performance, bookings and revenue.</div>', unsafe_allow_html=True)
 
     total_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ?", (owner_id,))[0]
     available_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ? AND status = 'Available'", (owner_id,))[0]
+    booked_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ? AND status = 'Booked'", (owner_id,))[0]
     total_bookings = fetch_one("SELECT COUNT(*) FROM bookings WHERE owner_id = ?", (owner_id,))[0]
     revenue = fetch_one("SELECT COALESCE(SUM(total_price), 0) FROM bookings WHERE owner_id = ?", (owner_id,))[0]
 
@@ -341,8 +493,10 @@ def dashboard_home(owner_id):
 
     col1.metric("Total Rooms", total_rooms)
     col2.metric("Available Rooms", available_rooms)
-    col3.metric("Bookings", total_bookings)
+    col3.metric("Booked Rooms", booked_rooms)
     col4.metric("Revenue", currency(revenue))
+
+    st.divider()
 
     bookings = fetch_all("""
         SELECT created_at, total_price, status
@@ -359,6 +513,11 @@ def dashboard_home(owner_id):
         fig = px.line(chart_df, x="Created At", y="Revenue", title="Revenue Trend")
         st.plotly_chart(fig, use_container_width=True)
 
+        status_df = df["Status"].value_counts().reset_index()
+        status_df.columns = ["Status", "Count"]
+        fig2 = px.pie(status_df, names="Status", values="Count", title="Booking Status")
+        st.plotly_chart(fig2, use_container_width=True)
+
         st.subheader("Recent Bookings")
         st.dataframe(df, use_container_width=True)
     else:
@@ -367,6 +526,7 @@ def dashboard_home(owner_id):
 
 def hotel_profile(owner_id):
     st.markdown('<div class="big-title">Hotel Profile</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Add your hotel details so customers can book rooms.</div>', unsafe_allow_html=True)
 
     hotel = fetch_one("""
         SELECT hotel_name, location, phone, description, amenities
@@ -404,6 +564,7 @@ def hotel_profile(owner_id):
 
 def manage_rooms(owner_id):
     st.markdown('<div class="big-title">Manage Rooms</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Add rooms, update availability, and manage pricing.</div>', unsafe_allow_html=True)
 
     with st.expander("Add New Room", expanded=True):
         col1, col2 = st.columns(2)
@@ -444,6 +605,8 @@ def manage_rooms(owner_id):
             rooms,
             columns=["ID", "Room Number", "Type", "Price", "Capacity", "Status", "Description"]
         )
+
+        st.subheader("Your Rooms")
         st.dataframe(df, use_container_width=True)
 
         st.subheader("Update Room Status")
@@ -451,7 +614,7 @@ def manage_rooms(owner_id):
         selected_id = st.selectbox("Select Room ID", room_ids)
         new_status = st.selectbox("New Status", ["Available", "Booked", "Maintenance"])
 
-        if st.button("Update Status"):
+        if st.button("Update Status", use_container_width=True):
             execute_query("UPDATE rooms SET status = ? WHERE id = ?", (new_status, selected_id))
             st.success("Room status updated.")
             st.rerun()
@@ -461,6 +624,7 @@ def manage_rooms(owner_id):
 
 def reservations(owner_id):
     st.markdown('<div class="big-title">Reservations</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">View and manage customer bookings.</div>', unsafe_allow_html=True)
 
     data = fetch_all("""
         SELECT 
@@ -497,7 +661,7 @@ def reservations(owner_id):
     booking_id = st.selectbox("Select Booking ID", df["Booking ID"].tolist())
     status = st.selectbox("Status", ["Confirmed", "Checked In", "Checked Out", "Cancelled"])
 
-    if st.button("Update Booking"):
+    if st.button("Update Booking", use_container_width=True):
         execute_query("UPDATE bookings SET status = ? WHERE id = ?", (status, booking_id))
 
         if status in ["Checked Out", "Cancelled"]:
@@ -521,7 +685,7 @@ def owner_app():
     owner = st.session_state.owner
     owner_id = owner["id"]
 
-    st.sidebar.title("HotelPro")
+    st.sidebar.title("🏨 HotelPro")
     st.sidebar.success(f"Owner: {owner['name']}")
 
     page = st.sidebar.radio(
@@ -545,7 +709,7 @@ def owner_app():
 if st.session_state.logged_in:
     owner_app()
 else:
-    st.sidebar.title("HotelPro")
+    st.sidebar.title("🏨 HotelPro")
 
     page = st.sidebar.radio(
         "Navigation",
