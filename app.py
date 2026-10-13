@@ -1,724 +1,1406 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3
 import hashlib
-import plotly.express as px
-from datetime import datetime, date
-
-DB_NAME = "hotel_system.db"
+import hmac
+import secrets
+import re
+import html
+from datetime import datetime, date, timedelta
+from pathlib import Path
 
 st.set_page_config(
-    page_title="HotelPro Reservation System",
+    page_title="HotelPro Elite | Luxury Management",
     page_icon="🏨",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# ---------------- PREMIUM STYLE ----------------
+DB = Path(__file__).resolve().parent / "hotelpro_elite.db"
+
+# =========================
+# LUXURY THEME
+# =========================
+
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
+
+:root {
+    --gold: #D7B878;
+    --goldlight: #F4DFAD;
+    --black: #0B0D0E;
+    --card: #171A1C;
+    --border: #45402F;
+    --muted: #B5B0A4;
+}
 
 html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
+    font-family: 'DM Sans', sans-serif;
 }
 
 .stApp {
-    background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 45%, #fff7ed 100%);
+    background:
+        radial-gradient(
+            ellipse at 80% 0%,
+            rgba(190,151,79,.10),
+            transparent 40%
+        ),
+        #0B0D0E;
+    color: #F5F0E5;
 }
 
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+[data-testid="stSidebar"] {
+    background: #111416;
+    border-right: 1px solid #3D382D;
 }
 
-section[data-testid="stSidebar"] * {
-    color: white !important;
-}
-
-.big-title {
-    font-size: 44px;
-    font-weight: 900;
-    color: #0f172a;
-    line-height: 1.1;
-}
-
-.subtitle {
-    font-size: 18px;
-    color: #475569;
-    margin-top: 10px;
-    margin-bottom: 25px;
+h1, h2, h3 {
+    color: #F5E8CA !important;
 }
 
 .hero {
-    padding: 48px;
-    border-radius: 30px;
-    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #f97316 100%);
-    color: white;
-    box-shadow: 0 25px 60px rgba(37, 99, 235, 0.28);
-    margin-bottom: 30px;
+    padding: 48px 38px;
+    border-radius: 24px;
+    background:
+        linear-gradient(
+            120deg,
+            #181B1D 0%,
+            #29251C 65%,
+            #17191A 100%
+        );
+    border: 1px solid #6C5734;
+    box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    margin-bottom: 28px;
 }
 
 .hero h1 {
-    font-size: 54px;
-    font-weight: 900;
-    margin-bottom: 10px;
-    color: white;
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.1rem,4vw,3.5rem);
+    color: #F5DEAA !important;
+    margin: 8px 0;
 }
 
 .hero p {
-    font-size: 19px;
-    color: #e0e7ff;
+    color: #C8C0B0;
+    font-size: 1.05rem;
 }
 
-.card {
-    background: rgba(255,255,255,0.95);
-    padding: 28px;
-    border-radius: 24px;
-    border: 1px solid rgba(226,232,240,0.9);
-    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-    margin-bottom: 20px;
+.eyebrow {
+    color: #D7B878;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 3px;
 }
 
-.feature-card {
-    background: white;
-    padding: 24px;
-    border-radius: 22px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
-    text-align: center;
-    min-height: 150px;
+.lux-card {
+    padding: 25px;
+    border-radius: 18px;
+    background: linear-gradient(145deg,#1D2021,#151718);
+    border: 1px solid #48402E;
+    margin-bottom: 18px;
+    min-height: 135px;
 }
 
-.feature-card h3 {
-    color: #0f172a;
+.lux-card h3 {
+    color: #F1D79D !important;
+    margin: 8px 0;
+}
+
+.lux-card p {
+    color: #BDB6A7;
+    margin: 0;
+}
+
+.gold-title {
+    color: #D7B878;
+    font-size: 12px;
+    letter-spacing: 2px;
     font-weight: 800;
 }
 
-.feature-card p {
-    color: #64748b;
-}
-
-div.stButton > button {
-    background: linear-gradient(135deg, #2563eb, #7c3aed);
-    color: white;
-    border: none;
-    border-radius: 14px;
-    padding: 0.75rem 1rem;
-    font-weight: 700;
-    box-shadow: 0 10px 25px rgba(37,99,235,0.25);
-}
-
-div.stButton > button:hover {
-    background: linear-gradient(135deg, #1d4ed8, #6d28d9);
-    color: white;
-    transform: translateY(-1px);
-}
-
 [data-testid="stMetric"] {
-    background: white;
+    background: linear-gradient(145deg,#202223,#17191A);
+    border: 1px solid #514631;
+    border-radius: 17px;
     padding: 20px;
-    border-radius: 20px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+}
+
+[data-testid="stMetricValue"] {
+    color: #F2D99F;
+}
+
+div.stButton > button[kind="primary"],
+div.stFormSubmitButton > button[kind="primary"] {
+    background: linear-gradient(110deg,#C9A35E,#F2D99F);
+    color: #171717 !important;
+    border: 1px solid #E8CD91;
+    border-radius: 11px;
+    font-weight: 800;
+    min-height: 46px;
+}
+
+div.stButton > button[kind="primary"]:hover,
+div.stFormSubmitButton > button[kind="primary"]:hover {
+    background: #F5E0AE;
+    color: #111 !important;
+}
+
+div.stButton > button:not([kind="primary"]) {
+    background: #222526;
+    color: #F2D99F;
+    border: 1px solid #625336;
+    border-radius: 11px;
+}
+
+div[data-testid="stForm"] {
+    background: #181B1C;
+    border: 1px solid #4C422F;
+    border-radius: 18px;
+    padding: 24px;
+}
+
+[data-testid="stDataFrame"] {
+    border: 1px solid #4C422F;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+[data-baseweb="tab"][aria-selected="true"] {
+    color: #E6C889 !important;
 }
 
 .stAlert {
-    border-radius: 16px;
-}
-
-input, textarea, select {
-    border-radius: 12px !important;
+    border-radius: 12px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ---------------- DATABASE ----------------
-def get_connection():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
+def safe(value):
+    return html.escape(str(value or ""), quote=True)
+
+
+def hero(title, subtitle, eyebrow="HOTELPRO ELITE"):
+    st.markdown(f"""
+    <div class="hero">
+        <div class="eyebrow">{safe(eyebrow)}</div>
+        <h1>{safe(title)}</h1>
+        <p>{safe(subtitle)}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def feature(title, description):
+    st.markdown(f"""
+    <div class="lux-card">
+        <div class="gold-title">✦ ELITE FEATURE</div>
+        <h3>{safe(title)}</h3>
+        <p>{safe(description)}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def money(amount):
+    return f"PKR {float(amount):,.0f}"
 
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+# =========================
+# DATABASE
+# =========================
+
+def connect():
+    c = sqlite3.connect(DB, timeout=15)
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA foreign_keys=ON")
+    c.execute("PRAGMA busy_timeout=15000")
+    return c
+
+
 def init_db():
-    conn = get_connection()
-    cur = conn.cursor()
+    with connect() as c:
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS owners (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS owners (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at TEXT
-    )
-    """)
+        CREATE TABLE IF NOT EXISTS hotels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL UNIQUE,
+            hotel_name TEXT NOT NULL,
+            location TEXT NOT NULL,
+            phone TEXT,
+            description TEXT,
+            amenities TEXT,
+            FOREIGN KEY(owner_id) REFERENCES owners(id)
+        );
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS hotels (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        owner_id INTEGER,
-        hotel_name TEXT,
-        location TEXT,
-        phone TEXT,
-        description TEXT,
-        amenities TEXT
-    )
-    """)
+        CREATE TABLE IF NOT EXISTS rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            room_number TEXT NOT NULL,
+            room_type TEXT NOT NULL,
+            price REAL NOT NULL CHECK(price>=0),
+            capacity INTEGER NOT NULL CHECK(capacity>0),
+            status TEXT NOT NULL DEFAULT 'Available',
+            description TEXT,
+            UNIQUE(owner_id,room_number),
+            FOREIGN KEY(owner_id) REFERENCES owners(id)
+        );
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS rooms (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        owner_id INTEGER,
-        room_number TEXT,
-        room_type TEXT,
-        price INTEGER,
-        capacity INTEGER,
-        status TEXT,
-        description TEXT
-    )
-    """)
+        CREATE TABLE IF NOT EXISTS bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            room_id INTEGER NOT NULL,
+            customer_name TEXT NOT NULL,
+            customer_email TEXT NOT NULL,
+            customer_phone TEXT NOT NULL,
+            guests INTEGER NOT NULL,
+            check_in TEXT NOT NULL,
+            check_out TEXT NOT NULL,
+            nights INTEGER NOT NULL,
+            total_price REAL NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(owner_id) REFERENCES owners(id),
+            FOREIGN KEY(room_id) REFERENCES rooms(id)
+        );
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS bookings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        owner_id INTEGER,
-        room_id INTEGER,
-        customer_name TEXT,
-        customer_email TEXT,
-        customer_phone TEXT,
-        guests INTEGER,
-        check_in TEXT,
-        check_out TEXT,
-        nights INTEGER,
-        total_price INTEGER,
-        status TEXT,
-        created_at TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-def execute_query(query, params=()):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    conn.commit()
-    conn.close()
-
-
-def fetch_all(query, params=()):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    data = cur.fetchall()
-    conn.close()
-    return data
-
-
-def fetch_one(query, params=()):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    data = cur.fetchone()
-    conn.close()
-    return data
+        CREATE INDEX IF NOT EXISTS idx_booking_dates
+        ON bookings(room_id,check_in,check_out,status);
+        """)
 
 
 init_db()
 
 
-# ---------------- AUTH ----------------
+def fetch_all(sql, args=()):
+    with connect() as c:
+        return [
+            dict(row)
+            for row in c.execute(sql, args).fetchall()
+        ]
+
+
+def fetch_one(sql, args=()):
+    with connect() as c:
+        row = c.execute(sql, args).fetchone()
+        return dict(row) if row else None
+
+
+def execute(sql, args=()):
+    with connect() as c:
+        cur = c.execute(sql, args)
+        return cur.lastrowid
+
+
+# =========================
+# SECURE PASSWORDS
+# =========================
+
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode(),
+        salt,
+        600000
+    )
+    return (
+        "pbkdf2_sha256$600000$"
+        + salt.hex()
+        + "$"
+        + digest.hex()
+    )
 
 
-def signup_owner(name, email, password):
-    existing = fetch_one("SELECT id FROM owners WHERE email = ?", (email,))
+def verify_password(password, stored):
+    try:
+        algorithm, rounds, salt, digest = stored.split("$")
 
-    if existing:
+        if algorithm != "pbkdf2_sha256":
+            return False
+
+        calculated = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode(),
+            bytes.fromhex(salt),
+            int(rounds)
+        )
+
+        return hmac.compare_digest(
+            calculated,
+            bytes.fromhex(digest)
+        )
+    except (ValueError, TypeError):
+        return False
+
+
+def signup(name, email, password):
+    try:
+        execute("""
+            INSERT INTO owners(name,email,password,created_at)
+            VALUES(?,?,?,?)
+        """, (
+            name.strip(),
+            email.strip().lower(),
+            hash_password(password),
+            now()
+        ))
+        return True, "Account created successfully."
+    except sqlite3.IntegrityError:
         return False, "Email already registered."
 
-    execute_query(
-        "INSERT INTO owners (name, email, password, created_at) VALUES (?, ?, ?, ?)",
-        (name, email, hash_password(password), now())
-    )
 
-    return True, "Account created successfully."
-
-
-def login_owner(email, password):
+def login(email, password):
     owner = fetch_one(
-        "SELECT id, name, email FROM owners WHERE email = ? AND password = ?",
-        (email, hash_password(password))
+        "SELECT * FROM owners WHERE email=?",
+        (email.strip().lower(),)
     )
 
-    if owner:
-        return True, {
-            "id": owner[0],
-            "name": owner[1],
-            "email": owner[2]
+    if owner and verify_password(
+        password,
+        owner["password"]
+    ):
+        return {
+            "id": owner["id"],
+            "name": owner["name"],
+            "email": owner["email"]
         }
 
-    return False, None
+    return None
 
 
-# ---------------- SESSION ----------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# =========================
+# SESSION
+# =========================
 
 if "owner" not in st.session_state:
     st.session_state.owner = None
 
-
-def currency(amount):
-    return f"PKR {int(amount):,}"
+if "booking_receipt" not in st.session_state:
+    st.session_state.booking_receipt = None
 
 
 def logout():
-    st.session_state.logged_in = False
     st.session_state.owner = None
     st.rerun()
 
 
-# ---------------- AUTH PAGES ----------------
-def login_page():
-    st.markdown('<div class="big-title">🏨 Owner Login</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Login to manage your hotel, rooms, bookings and revenue.</div>', unsafe_allow_html=True)
+# =========================
+# DATE-WISE AVAILABILITY
+# =========================
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login", use_container_width=True):
-        success, owner = login_owner(email, password)
-
-        if success:
-            st.session_state.logged_in = True
-            st.session_state.owner = owner
-            st.success("Login successful.")
-            st.rerun()
-        else:
-            st.error("Invalid email or password.")
-
-    st.markdown('</div>', unsafe_allow_html=True)
+ACTIVE_STATUSES = (
+    "Confirmed",
+    "Checked In",
+    "Checked Out"
+)
 
 
-def signup_page():
-    st.markdown('<div class="big-title">Create Owner Account</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Create your hotel owner account and start managing your property.</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    name = st.text_input("Owner Name")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    confirm = st.text_input("Confirm Password", type="password")
-
-    if st.button("Create Account", use_container_width=True):
-        if not name or not email or not password:
-            st.error("Please fill all fields.")
-        elif password != confirm:
-            st.error("Passwords do not match.")
-        elif len(password) < 6:
-            st.error("Password must be at least 6 characters.")
-        else:
-            success, message = signup_owner(name, email, password)
-            if success:
-                st.success(message)
-            else:
-                st.error(message)
-
-    st.markdown('</div>', unsafe_allow_html=True)
+def available_rooms(owner_id, check_in, check_out):
+    return fetch_all("""
+        SELECT r.*
+        FROM rooms r
+        WHERE r.owner_id=?
+        AND r.status='Available'
+        AND NOT EXISTS (
+            SELECT 1 FROM bookings b
+            WHERE b.room_id=r.id
+            AND b.status IN (
+                'Confirmed','Checked In','Checked Out'
+            )
+            AND b.check_in < ?
+            AND b.check_out > ?
+        )
+        ORDER BY r.room_number
+    """, (
+        owner_id,
+        str(check_out),
+        str(check_in)
+    ))
 
 
-# ---------------- PUBLIC BOOKING ----------------
-def public_booking_page():
-    st.markdown("""
-    <div class="hero">
-        <h1>Luxury Hotel Booking System</h1>
-        <p>Book premium rooms instantly with a modern hotel reservation platform.</p>
-    </div>
-    """, unsafe_allow_html=True)
+def create_booking(
+    owner_id,
+    room_id,
+    name,
+    email,
+    phone,
+    guests,
+    check_in,
+    check_out
+):
+    nights = (check_out - check_in).days
 
-    col1, col2, col3 = st.columns(3)
+    if nights <= 0:
+        return False, "Invalid booking dates."
 
-    with col1:
-        st.markdown("""
-        <div class="feature-card">
-            <h3>🏨 Premium Hotels</h3>
-            <p>Find professional hotels with available rooms.</p>
-        </div>
-        """, unsafe_allow_html=True)
+    try:
+        with connect() as c:
+            c.execute("BEGIN IMMEDIATE")
 
-    with col2:
-        st.markdown("""
-        <div class="feature-card">
-            <h3>⚡ Instant Booking</h3>
-            <p>Confirm reservations quickly and securely.</p>
-        </div>
-        """, unsafe_allow_html=True)
+            room = c.execute("""
+                SELECT * FROM rooms
+                WHERE id=? AND owner_id=? AND status='Available'
+            """, (room_id, owner_id)).fetchone()
 
-    with col3:
-        st.markdown("""
-        <div class="feature-card">
-            <h3>📊 Owner Dashboard</h3>
-            <p>Manage hotels, rooms, bookings and revenue.</p>
-        </div>
-        """, unsafe_allow_html=True)
+            if not room:
+                return False, "Room is unavailable."
 
-    st.markdown("## Available Hotels")
+            if guests > room["capacity"]:
+                return False, "Guest capacity exceeded."
+
+            conflict = c.execute("""
+                SELECT id FROM bookings
+                WHERE room_id=?
+                AND status IN (
+                    'Confirmed','Checked In','Checked Out'
+                )
+                AND check_in < ?
+                AND check_out > ?
+                LIMIT 1
+            """, (
+                room_id,
+                str(check_out),
+                str(check_in)
+            )).fetchone()
+
+            if conflict:
+                return False, "Room is booked for these dates."
+
+            total = nights * room["price"]
+
+            cur = c.execute("""
+                INSERT INTO bookings(
+                    owner_id,room_id,customer_name,
+                    customer_email,customer_phone,
+                    guests,check_in,check_out,nights,
+                    total_price,status,created_at
+                )
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                owner_id,
+                room_id,
+                name,
+                email,
+                phone,
+                guests,
+                str(check_in),
+                str(check_out),
+                nights,
+                total,
+                "Confirmed",
+                now()
+            ))
+
+            booking_id = cur.lastrowid
+
+        return True, booking_id
+
+    except sqlite3.Error:
+        return False, "Database error. Please try again."
+
+
+# =========================
+# PUBLIC BOOKING PAGE
+# =========================
+
+def booking_page():
+    hero(
+        "Experience Exceptional Hospitality",
+        "Discover refined stays, elegant rooms and effortless reservations.",
+        "✦ THE ART OF LUXURY STAYS"
+    )
+
+    a, b, c = st.columns(3)
+
+    with a:
+        feature(
+            "Curated Hotels",
+            "Explore beautiful properties and premium accommodation."
+        )
+
+    with b:
+        feature(
+            "Seamless Booking",
+            "Reserve your ideal room in just a few simple steps."
+        )
+
+    with c:
+        feature(
+            "Trusted Management",
+            "A complete digital experience for guests and hotel owners."
+        )
+
+    st.subheader("Explore Our Hotels")
 
     hotels = fetch_all("""
-        SELECT hotels.id, hotels.owner_id, hotels.hotel_name, hotels.location, hotels.phone, hotels.description
-        FROM hotels
-        JOIN rooms ON hotels.owner_id = rooms.owner_id
-        WHERE rooms.status = 'Available'
-        GROUP BY hotels.owner_id
+        SELECT * FROM hotels
+        ORDER BY hotel_name
     """)
 
     if not hotels:
-        st.warning("No hotels with available rooms right now. Owner ko pehle hotel profile aur rooms add karne honge.")
+        st.info(
+            "No hotels are listed yet. "
+            "An owner can add a hotel after signing in."
+        )
         return
 
-    hotel_options = {f"{h[2]} - {h[3]}": h for h in hotels}
-    selected_hotel_name = st.selectbox("Select Hotel", list(hotel_options.keys()))
-    hotel = hotel_options[selected_hotel_name]
-
-    hotel_id, owner_id, hotel_name, location, phone, description = hotel
-
-    st.markdown(f"""
-    <div class="card">
-        <h2>{hotel_name}</h2>
-        <p><b>📍 Location:</b> {location}</p>
-        <p><b>☎ Phone:</b> {phone}</p>
-        <p>{description}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    rooms = fetch_all("""
-        SELECT id, room_number, room_type, price, capacity, description
-        FROM rooms
-        WHERE owner_id = ? AND status = 'Available'
-    """, (owner_id,))
-
-    room_options = {
-        f"Room {r[1]} | {r[2]} | {currency(r[3])}/night | Capacity {r[4]}": r
-        for r in rooms
+    hotel_map = {
+        f"{h['hotel_name']} — {h['location']} (#{h['id']})": h
+        for h in hotels
     }
 
-    selected_room_label = st.selectbox("Select Room", list(room_options.keys()))
-    room = room_options[selected_room_label]
+    chosen = st.selectbox(
+        "Choose your hotel",
+        list(hotel_map)
+    )
 
-    room_id, room_number, room_type, price, capacity, room_description = room
+    hotel = hotel_map[chosen]
 
     st.markdown(f"""
-    <div class="card">
-        <h3>Selected Room</h3>
-        <p><b>Room Number:</b> {room_number}</p>
-        <p><b>Room Type:</b> {room_type}</p>
-        <p><b>Price:</b> {currency(price)} per night</p>
-        <p><b>Capacity:</b> {capacity} guests</p>
-        <p>{room_description}</p>
+    <div class="lux-card">
+        <div class="gold-title">FEATURED PROPERTY</div>
+        <h3>{safe(hotel['hotel_name'])}</h3>
+        <p>📍 {safe(hotel['location'])}</p>
+        <p>☎ {safe(hotel['phone'])}</p>
+        <p>{safe(hotel['description'])}</p>
+        <p>✦ {safe(hotel['amenities'])}</p>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("## Customer Details")
+    st.subheader("Select Your Stay")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        customer_name = st.text_input("Customer Name")
-        customer_email = st.text_input("Customer Email")
-        customer_phone = st.text_input("Customer Phone")
+        check_in = st.date_input(
+            "Check-in date",
+            min_value=date.today(),
+            value=date.today(),
+            key="public_checkin"
+        )
 
     with col2:
-        guests = st.number_input("Guests", min_value=1, max_value=int(capacity))
-        check_in = st.date_input("Check-in", min_value=date.today())
-        check_out = st.date_input("Check-out", min_value=date.today())
+        check_out = st.date_input(
+            "Check-out date",
+            min_value=check_in + timedelta(days=1),
+            value=check_in + timedelta(days=1),
+            key="public_checkout"
+        )
 
-    if check_out > check_in:
-        nights = (check_out - check_in).days
-        total_price = nights * int(price)
+    if check_out <= check_in:
+        st.warning("Check-out must be after check-in.")
+        return
 
-        col_a, col_b = st.columns(2)
-        col_a.success(f"Nights: {nights}")
-        col_b.info(f"Total Price: {currency(total_price)}")
-    else:
-        nights = 0
-        total_price = 0
-        st.warning("Check-out date must be after check-in date.")
+    rooms = available_rooms(
+        hotel["owner_id"],
+        check_in,
+        check_out
+    )
 
-    if st.button("Confirm Booking", use_container_width=True):
-        if customer_name and customer_email and customer_phone and nights > 0:
-            execute_query("""
-                INSERT INTO bookings (
-                    owner_id, room_id, customer_name, customer_email, customer_phone,
-                    guests, check_in, check_out, nights, total_price, status, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                owner_id, room_id, customer_name, customer_email, customer_phone,
-                guests, str(check_in), str(check_out), nights, total_price,
-                "Confirmed", now()
-            ))
+    if not rooms:
+        st.warning(
+            "No rooms available for your selected dates."
+        )
+        return
 
-            execute_query(
-                "UPDATE rooms SET status = 'Booked' WHERE id = ?",
-                (room_id,)
+    room_map = {
+        f"Room {r['room_number']} · {r['room_type']} "
+        f"· {money(r['price'])}/night": r
+        for r in rooms
+    }
+
+    selected = st.selectbox(
+        "Available rooms",
+        list(room_map)
+    )
+
+    room = room_map[selected]
+    nights = (check_out - check_in).days
+    total = nights * room["price"]
+
+    a, b, c = st.columns(3)
+    a.metric("Nightly Rate", money(room["price"]))
+    b.metric("Nights", nights)
+    c.metric("Total Stay", money(total))
+
+    st.caption(
+        f"Capacity: {room['capacity']} guests · "
+        f"{room['description'] or 'Premium accommodation'}"
+    )
+
+    st.subheader("Guest Information")
+
+    with st.form("booking_form"):
+        name = st.text_input("Full Name")
+        email = st.text_input("Email Address")
+        phone = st.text_input("Phone Number")
+
+        guests = st.number_input(
+            "Number of Guests",
+            min_value=1,
+            max_value=int(room["capacity"]),
+            value=1
+        )
+
+        agree = st.checkbox(
+            "I confirm that my booking information is correct."
+        )
+
+        submit = st.form_submit_button(
+            "Confirm Reservation",
+            type="primary",
+            use_container_width=True
+        )
+
+    if submit:
+        if not all([
+            name.strip(),
+            email.strip(),
+            phone.strip(),
+            agree
+        ]):
+            st.error("Complete all required fields.")
+
+        elif not re.fullmatch(
+            r"[^@\s]+@[^@\s]+\.[^@\s]+",
+            email.strip()
+        ):
+            st.error("Enter a valid email address.")
+
+        else:
+            success, result = create_booking(
+                hotel["owner_id"],
+                room["id"],
+                name.strip(),
+                email.strip(),
+                phone.strip(),
+                int(guests),
+                check_in,
+                check_out
             )
 
-            st.success("Booking confirmed successfully.")
-            st.balloons()
-        else:
-            st.error("Please complete all fields correctly.")
+            if success:
+                st.session_state.booking_receipt = {
+                    "id": result,
+                    "hotel": hotel["hotel_name"],
+                    "guest": name.strip(),
+                    "total": total
+                }
+                st.rerun()
+            else:
+                st.error(result)
+
+    receipt = st.session_state.booking_receipt
+
+    if receipt:
+        st.success(
+            f"Reservation #{receipt['id']} confirmed!"
+        )
+        st.info(
+            f"{receipt['guest']} · {receipt['hotel']} · "
+            f"{money(receipt['total'])}"
+        )
+        st.caption(
+            "Reservation recorded. Payment is not processed "
+            "through this application."
+        )
 
 
-# ---------------- OWNER DASHBOARD ----------------
-def dashboard_home(owner_id):
-    st.markdown('<div class="big-title">Owner Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Track your hotel performance, bookings and revenue.</div>', unsafe_allow_html=True)
+# =========================
+# OWNER AUTHENTICATION
+# =========================
 
-    total_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ?", (owner_id,))[0]
-    available_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ? AND status = 'Available'", (owner_id,))[0]
-    booked_rooms = fetch_one("SELECT COUNT(*) FROM rooms WHERE owner_id = ? AND status = 'Booked'", (owner_id,))[0]
-    total_bookings = fetch_one("SELECT COUNT(*) FROM bookings WHERE owner_id = ?", (owner_id,))[0]
-    revenue = fetch_one("SELECT COALESCE(SUM(total_price), 0) FROM bookings WHERE owner_id = ?", (owner_id,))[0]
+def auth_page():
+    hero(
+        "Hotel Owner Portal",
+        "Manage your hospitality business with confidence.",
+        "✦ PRIVATE MANAGEMENT ACCESS"
+    )
 
-    col1, col2, col3, col4 = st.columns(4)
+    tab1, tab2 = st.tabs([
+        "Owner Login",
+        "Create Account"
+    ])
 
-    col1.metric("Total Rooms", total_rooms)
-    col2.metric("Available Rooms", available_rooms)
-    col3.metric("Booked Rooms", booked_rooms)
-    col4.metric("Revenue", currency(revenue))
+    with tab1:
+        with st.form("login_form"):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input(
+                "Password",
+                type="password",
+                key="login_password"
+            )
 
-    st.divider()
+            submitted = st.form_submit_button(
+                "Sign In",
+                type="primary",
+                use_container_width=True
+            )
 
-    bookings = fetch_all("""
-        SELECT created_at, total_price, status
+        if submitted:
+            owner = login(email, password)
+
+            if owner:
+                st.session_state.owner = owner
+                st.rerun()
+            else:
+                st.error("Invalid email or password.")
+
+    with tab2:
+        with st.form("signup_form"):
+            name = st.text_input("Full Name")
+            email = st.text_input("Business Email")
+            password = st.text_input(
+                "Create Password",
+                type="password"
+            )
+            confirm = st.text_input(
+                "Confirm Password",
+                type="password"
+            )
+
+            submitted = st.form_submit_button(
+                "Create Owner Account",
+                type="primary",
+                use_container_width=True
+            )
+
+        if submitted:
+            if not name.strip():
+                st.error("Enter your name.")
+
+            elif not re.fullmatch(
+                r"[^@\s]+@[^@\s]+\.[^@\s]+",
+                email.strip()
+            ):
+                st.error("Enter a valid email.")
+
+            elif len(password) < 10:
+                st.error(
+                    "Password must contain at least 10 characters."
+                )
+
+            elif password != confirm:
+                st.error("Passwords do not match.")
+
+            else:
+                success, message = signup(
+                    name,
+                    email,
+                    password
+                )
+
+                if success:
+                    st.success(message + " You can now log in.")
+                else:
+                    st.error(message)
+
+
+# =========================
+# OWNER DASHBOARD
+# =========================
+
+def dashboard(owner_id):
+    hero(
+        "Executive Dashboard",
+        "A refined overview of your hotel's performance.",
+        "✦ BUSINESS INTELLIGENCE"
+    )
+
+    rooms = fetch_one("""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN status='Available'
+                THEN 1 ELSE 0 END) AS available,
+            SUM(CASE WHEN status='Maintenance'
+                THEN 1 ELSE 0 END) AS maintenance
+        FROM rooms WHERE owner_id=?
+    """, (owner_id,))
+
+    bookings = fetch_one("""
+        SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(
+                CASE WHEN status!='Cancelled'
+                THEN total_price ELSE 0 END
+            ),0) AS revenue
+        FROM bookings WHERE owner_id=?
+    """, (owner_id,))
+
+    cols = st.columns(4)
+
+    cols[0].metric("Total Rooms", rooms["total"])
+    cols[1].metric(
+        "Active Rooms",
+        rooms["available"] or 0
+    )
+    cols[2].metric("Reservations", bookings["total"])
+    cols[3].metric(
+        "Booked Revenue",
+        money(bookings["revenue"])
+    )
+
+    st.caption(
+        "Booked revenue is the value of non-cancelled "
+        "reservations, not verified payments."
+    )
+
+    data = fetch_all("""
+        SELECT
+            created_at,
+            total_price,
+            status,
+            customer_name
         FROM bookings
-        WHERE owner_id = ?
+        WHERE owner_id=?
         ORDER BY created_at DESC
     """, (owner_id,))
 
-    if bookings:
-        df = pd.DataFrame(bookings, columns=["Created At", "Revenue", "Status"])
-        df["Created At"] = pd.to_datetime(df["Created At"]).dt.date
-
-        chart_df = df.groupby("Created At")["Revenue"].sum().reset_index()
-        fig = px.line(chart_df, x="Created At", y="Revenue", title="Revenue Trend")
-        st.plotly_chart(fig, use_container_width=True)
-
-        status_df = df["Status"].value_counts().reset_index()
-        status_df.columns = ["Status", "Count"]
-        fig2 = px.pie(status_df, names="Status", values="Count", title="Booking Status")
-        st.plotly_chart(fig2, use_container_width=True)
-
-        st.subheader("Recent Bookings")
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("No booking data yet.")
-
-
-def hotel_profile(owner_id):
-    st.markdown('<div class="big-title">Hotel Profile</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Add your hotel details so customers can book rooms.</div>', unsafe_allow_html=True)
-
-    hotel = fetch_one("""
-        SELECT hotel_name, location, phone, description, amenities
-        FROM hotels
-        WHERE owner_id = ?
-    """, (owner_id,))
-
-    hotel_name = st.text_input("Hotel Name", value=hotel[0] if hotel else "")
-    location = st.text_input("Location", value=hotel[1] if hotel else "")
-    phone = st.text_input("Phone", value=hotel[2] if hotel else "")
-    description = st.text_area("Hotel Description", value=hotel[3] if hotel else "")
-    amenities = st.text_area("Amenities", value=hotel[4] if hotel else "WiFi, Parking, AC, Restaurant")
-
-    if st.button("Save Hotel Profile", use_container_width=True):
-        if not hotel_name or not location:
-            st.error("Hotel name and location are required.")
-            return
-
-        existing = fetch_one("SELECT id FROM hotels WHERE owner_id = ?", (owner_id,))
-
-        if existing:
-            execute_query("""
-                UPDATE hotels
-                SET hotel_name = ?, location = ?, phone = ?, description = ?, amenities = ?
-                WHERE owner_id = ?
-            """, (hotel_name, location, phone, description, amenities, owner_id))
-        else:
-            execute_query("""
-                INSERT INTO hotels (owner_id, hotel_name, location, phone, description, amenities)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (owner_id, hotel_name, location, phone, description, amenities))
-
-        st.success("Hotel profile saved successfully.")
-
-
-def manage_rooms(owner_id):
-    st.markdown('<div class="big-title">Manage Rooms</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Add rooms, update availability, and manage pricing.</div>', unsafe_allow_html=True)
-
-    with st.expander("Add New Room", expanded=True):
-        col1, col2 = st.columns(2)
-
-        with col1:
-            room_number = st.text_input("Room Number")
-            room_type = st.selectbox("Room Type", ["Single", "Double", "Deluxe", "Suite", "Family"])
-            price = st.number_input("Price per Night", min_value=1000, step=500)
-
-        with col2:
-            capacity = st.number_input("Capacity", min_value=1, max_value=10)
-            status = st.selectbox("Room Status", ["Available", "Booked", "Maintenance"])
-            description = st.text_area("Room Description")
-
-        if st.button("Add Room", use_container_width=True):
-            if room_number:
-                execute_query("""
-                    INSERT INTO rooms (
-                        owner_id, room_number, room_type, price, capacity, status, description
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (owner_id, room_number, room_type, price, capacity, status, description))
-
-                st.success("Room added successfully.")
-                st.rerun()
-            else:
-                st.error("Room number is required.")
-
-    rooms = fetch_all("""
-        SELECT id, room_number, room_type, price, capacity, status, description
-        FROM rooms
-        WHERE owner_id = ?
-        ORDER BY id DESC
-    """, (owner_id,))
-
-    if rooms:
-        df = pd.DataFrame(
-            rooms,
-            columns=["ID", "Room Number", "Type", "Price", "Capacity", "Status", "Description"]
-        )
-
-        st.subheader("Your Rooms")
-        st.dataframe(df, use_container_width=True)
-
-        st.subheader("Update Room Status")
-        room_ids = df["ID"].tolist()
-        selected_id = st.selectbox("Select Room ID", room_ids)
-        new_status = st.selectbox("New Status", ["Available", "Booked", "Maintenance"])
-
-        if st.button("Update Status", use_container_width=True):
-            execute_query("UPDATE rooms SET status = ? WHERE id = ?", (new_status, selected_id))
-            st.success("Room status updated.")
-            st.rerun()
-    else:
-        st.info("No rooms added yet.")
-
-
-def reservations(owner_id):
-    st.markdown('<div class="big-title">Reservations</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">View and manage customer bookings.</div>', unsafe_allow_html=True)
-
-    data = fetch_all("""
-        SELECT 
-            bookings.id,
-            rooms.room_number,
-            rooms.room_type,
-            bookings.customer_name,
-            bookings.customer_email,
-            bookings.customer_phone,
-            bookings.guests,
-            bookings.check_in,
-            bookings.check_out,
-            bookings.nights,
-            bookings.total_price,
-            bookings.status
-        FROM bookings
-        JOIN rooms ON bookings.room_id = rooms.id
-        WHERE bookings.owner_id = ?
-        ORDER BY bookings.id DESC
-    """, (owner_id,))
-
     if not data:
-        st.info("No reservations yet.")
+        st.info(
+            "No bookings yet. Add your hotel profile and rooms "
+            "to start receiving reservations."
+        )
         return
 
-    df = pd.DataFrame(data, columns=[
-        "Booking ID", "Room", "Type", "Customer", "Email", "Phone",
-        "Guests", "Check-in", "Check-out", "Nights", "Total", "Status"
-    ])
+    df = pd.DataFrame(data)
+    df["created_at"] = pd.to_datetime(df["created_at"])
 
-    st.dataframe(df, use_container_width=True)
+    active = df[df["status"] != "Cancelled"].copy()
 
-    st.subheader("Update Booking Status")
-    booking_id = st.selectbox("Select Booking ID", df["Booking ID"].tolist())
-    status = st.selectbox("Status", ["Confirmed", "Checked In", "Checked Out", "Cancelled"])
+    if not active.empty:
+        chart = (
+            active.groupby(
+                active["created_at"].dt.date
+            )["total_price"]
+            .sum()
+            .reset_index()
+        )
 
-    if st.button("Update Booking", use_container_width=True):
-        execute_query("UPDATE bookings SET status = ? WHERE id = ?", (status, booking_id))
+        chart.columns = ["Date", "Booked Revenue"]
 
-        if status in ["Checked Out", "Cancelled"]:
-            room_id = fetch_one("SELECT room_id FROM bookings WHERE id = ?", (booking_id,))[0]
-            execute_query("UPDATE rooms SET status = 'Available' WHERE id = ?", (room_id,))
+        st.subheader("Revenue Performance")
+        st.line_chart(
+            chart.set_index("Date"),
+            color="#D7B878"
+        )
 
-        st.success("Booking updated successfully.")
-        st.rerun()
+    st.subheader("Reservation Status")
 
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download Reservations CSV",
-        csv,
-        "reservations.csv",
-        "text/csv",
+    status_df = (
+        df["status"]
+        .value_counts()
+        .rename_axis("Status")
+        .reset_index(name="Count")
+    )
+
+    st.bar_chart(
+        status_df.set_index("Status"),
+        color="#D7B878"
+    )
+
+    st.subheader("Recent Reservations")
+    st.dataframe(
+        df.head(10),
+        hide_index=True,
         use_container_width=True
     )
 
 
-def owner_app():
-    owner = st.session_state.owner
-    owner_id = owner["id"]
+# =========================
+# HOTEL PROFILE
+# =========================
 
-    st.sidebar.title("🏨 HotelPro")
-    st.sidebar.success(f"Owner: {owner['name']}")
-
-    page = st.sidebar.radio(
-        "Menu",
-        ["Dashboard", "Hotel Profile", "Manage Rooms", "Reservations", "Logout"]
+def hotel_profile(owner_id):
+    hero(
+        "Hotel Profile",
+        "Build a beautiful digital identity for your property.",
+        "✦ PROPERTY SETTINGS"
     )
+
+    hotel = fetch_one(
+        "SELECT * FROM hotels WHERE owner_id=?",
+        (owner_id,)
+    )
+
+    with st.form("hotel_form"):
+        name = st.text_input(
+            "Hotel Name",
+            value=hotel["hotel_name"] if hotel else ""
+        )
+
+        location = st.text_input(
+            "Location",
+            value=hotel["location"] if hotel else ""
+        )
+
+        phone = st.text_input(
+            "Contact Number",
+            value=hotel["phone"] or "" if hotel else ""
+        )
+
+        description = st.text_area(
+            "Property Description",
+            value=hotel["description"] or "" if hotel else ""
+        )
+
+        amenities = st.text_area(
+            "Amenities",
+            value=hotel["amenities"] or "" if hotel
+            else "Wi-Fi, Air Conditioning, Parking"
+        )
+
+        save = st.form_submit_button(
+            "Save Hotel Profile",
+            type="primary"
+        )
+
+    if save:
+        if not name.strip() or not location.strip():
+            st.error("Hotel name and location are required.")
+            return
+
+        if hotel:
+            execute("""
+                UPDATE hotels
+                SET hotel_name=?,location=?,phone=?,
+                    description=?,amenities=?
+                WHERE owner_id=?
+            """, (
+                name.strip(),
+                location.strip(),
+                phone.strip(),
+                description.strip(),
+                amenities.strip(),
+                owner_id
+            ))
+        else:
+            execute("""
+                INSERT INTO hotels(
+                    owner_id,hotel_name,location,phone,
+                    description,amenities
+                )
+                VALUES(?,?,?,?,?,?)
+            """, (
+                owner_id,
+                name.strip(),
+                location.strip(),
+                phone.strip(),
+                description.strip(),
+                amenities.strip()
+            ))
+
+        st.success("Hotel profile saved successfully.")
+        st.rerun()
+
+
+# =========================
+# ROOM MANAGEMENT
+# =========================
+
+def manage_rooms(owner_id):
+    hero(
+        "Room Collection",
+        "Curate your accommodation inventory and pricing.",
+        "✦ INVENTORY MANAGEMENT"
+    )
+
+    with st.expander("➕ Add New Room", expanded=True):
+        with st.form("add_room"):
+            a, b = st.columns(2)
+
+            with a:
+                number = st.text_input("Room Number")
+                room_type = st.selectbox(
+                    "Room Category",
+                    [
+                        "Standard",
+                        "Deluxe",
+                        "Executive",
+                        "Suite",
+                        "Family",
+                        "Presidential Suite"
+                    ]
+                )
+                price = st.number_input(
+                    "Price Per Night (PKR)",
+                    min_value=0.0,
+                    value=5000.0,
+                    step=500.0
+                )
+
+            with b:
+                capacity = st.number_input(
+                    "Guest Capacity",
+                    min_value=1,
+                    max_value=30,
+                    value=2
+                )
+                status = st.selectbox(
+                    "Room Availability Status",
+                    ["Available", "Maintenance"]
+                )
+                description = st.text_area(
+                    "Room Description"
+                )
+
+            save = st.form_submit_button(
+                "Add Room",
+                type="primary"
+            )
+
+        if save:
+            if not number.strip():
+                st.error("Enter a room number.")
+            else:
+                try:
+                    execute("""
+                        INSERT INTO rooms(
+                            owner_id,room_number,room_type,
+                            price,capacity,status,description
+                        )
+                        VALUES(?,?,?,?,?,?,?)
+                    """, (
+                        owner_id,
+                        number.strip(),
+                        room_type,
+                        price,
+                        int(capacity),
+                        status,
+                        description.strip()
+                    ))
+                    st.success("Room added successfully.")
+                    st.rerun()
+
+                except sqlite3.IntegrityError:
+                    st.error("This room number already exists.")
+
+    rooms = fetch_all("""
+        SELECT * FROM rooms
+        WHERE owner_id=?
+        ORDER BY room_number
+    """, (owner_id,))
+
+    if not rooms:
+        st.info("No rooms added yet.")
+        return
+
+    st.subheader("Your Room Inventory")
+
+    st.dataframe(
+        pd.DataFrame(rooms),
+        hide_index=True,
+        use_container_width=True
+    )
+
+    room_map = {
+        f"Room {r['room_number']} — {r['room_type']}": r
+        for r in rooms
+    }
+
+    selected = st.selectbox(
+        "Select room to edit",
+        list(room_map)
+    )
+
+    room = room_map[selected]
+
+    with st.form(f"edit_room_{room['id']}"):
+        number = st.text_input(
+            "Room Number",
+            value=room["room_number"]
+        )
+
+        categories = [
+            "Standard",
+            "Deluxe",
+            "Executive",
+            "Suite",
+            "Family",
+            "Presidential Suite"
+        ]
+
+        room_type = st.selectbox(
+            "Category",
+            categories,
+            index=categories.index(room["room_type"])
+            if room["room_type"] in categories else 0
+        )
+
+        price = st.number_input(
+            "Nightly Price",
+            min_value=0.0,
+            value=float(room["price"])
+        )
+
+        capacity = st.number_input(
+            "Capacity",
+            min_value=1,
+            value=int(room["capacity"])
+        )
+
+        status = st.selectbox(
+            "Operational Status",
+            ["Available", "Maintenance"],
+            index=0 if room["status"] == "Available" else 1
+        )
+
+        description = st.text_area(
+            "Description",
+            value=room["description"] or ""
+        )
+
+        update = st.form_submit_button(
+            "Update Room",
+            type="primary"
+        )
+
+    if update:
+        try:
+            execute("""
+                UPDATE rooms
+                SET room_number=?,room_type=?,price=?,
+                    capacity=?,status=?,description=?
+                WHERE id=? AND owner_id=?
+            """, (
+                number.strip(),
+                room_type,
+                price,
+                int(capacity),
+                status,
+                description.strip(),
+                room["id"],
+                owner_id
+            ))
+
+            st.success("Room updated.")
+            st.rerun()
+
+        except sqlite3.IntegrityError:
+            st.error("Room number already exists.")
+
+
+# =========================
+# RESERVATIONS
+# =========================
+
+def reservations(owner_id):
+    hero(
+        "Reservation Concierge",
+        "Every guest journey, beautifully organized.",
+        "✦ BOOKING OPERATIONS"
+    )
+
+    rows = fetch_all("""
+        SELECT
+            b.*,
+            r.room_number,
+            r.room_type
+        FROM bookings b
+        JOIN rooms r ON r.id=b.room_id
+        WHERE b.owner_id=?
+        ORDER BY b.id DESC
+    """, (owner_id,))
+
+    if not rows:
+        st.info("No reservations available.")
+        return
+
+    df = pd.DataFrame(rows)
+
+    a, b, c = st.columns(3)
+    a.metric("Total Reservations", len(df))
+    b.metric(
+        "Confirmed",
+        int((df["status"] == "Confirmed").sum())
+    )
+    c.metric(
+        "Cancelled",
+        int((df["status"] == "Cancelled").sum())
+    )
+
+    status_filter = st.selectbox(
+        "Filter reservations",
+        [
+            "All",
+            "Confirmed",
+            "Checked In",
+            "Checked Out",
+            "Cancelled"
+        ]
+    )
+
+    display = df.copy()
+
+    if status_filter != "All":
+        display = display[
+            display["status"] == status_filter
+        ]
+
+    st.dataframe(
+        display,
+        hide_index=True,
+        use_container_width=True
+    )
+
+    booking_map = {
+        f"#{r['id']} · {r['customer_name']} "
+        f"· Room {r['room_number']}": r
+        for r in rows
+    }
+
+    selected = st.selectbox(
+        "Select Reservation",
+        list(booking_map)
+    )
+
+    booking = booking_map[selected]
+
+    st.write(
+        f"**Current status:** {booking['status']}"
+    )
+
+    allowed = {
+        "Confirmed": [
+            "Confirmed",
+            "Checked In",
+            "Cancelled"
+        ],
+        "Checked In": [
+            "Checked In",
+            "Checked Out"
+        ],
+        "Checked Out": ["Checked Out"],
+        "Cancelled": ["Cancelled"]
+    }
+
+    status = st.selectbox(
+        "Update Status",
+        allowed.get(
+            booking["status"],
+            [booking["status"]]
+        )
+    )
+
+    if st.button(
+        "Save Reservation Status",
+        type="primary"
+    ):
+        if status == "Checked In":
+            if not (
+                date.fromisoformat(booking["check_in"])
+                <= date.today()
+                < date.fromisoformat(booking["check_out"])
+            ):
+                st.error(
+                    "Check-in is only allowed during "
+                    "the booked stay dates."
+                )
+                return
+
+        execute("""
+            UPDATE bookings
+            SET status=?
+            WHERE id=? AND owner_id=?
+        """, (
+            status,
+            booking["id"],
+            owner_id
+        ))
+
+        st.success("Reservation updated.")
+        st.rerun()
+
+    st.divider()
+
+    st.download_button(
+        "⬇ Export Reservations CSV",
+        df.to_csv(index=False).encode("utf-8-sig"),
+        file_name="hotelpro_reservations.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+
+# =========================
+# MAIN NAVIGATION
+# =========================
+
+with st.sidebar:
+    st.markdown("## ✦ HOTELPRO ELITE")
+    st.caption("LUXURY HOSPITALITY SUITE")
+    st.divider()
+
+    owner = st.session_state.owner
+
+    if owner:
+        st.success(f"Welcome, {owner['name']}")
+
+        page = st.radio(
+            "Management",
+            [
+                "Dashboard",
+                "Hotel Profile",
+                "Manage Rooms",
+                "Reservations",
+                "Public Booking Preview"
+            ]
+        )
+
+        st.divider()
+
+        if st.button(
+            "Sign Out",
+            use_container_width=True
+        ):
+            logout()
+
+    else:
+        page = st.radio(
+            "Explore",
+            [
+                "Book a Room",
+                "Owner Portal"
+            ]
+        )
+
+    st.divider()
+    st.caption("HotelPro Elite • Luxury Edition")
+
+
+if st.session_state.owner:
+    owner_id = st.session_state.owner["id"]
 
     if page == "Dashboard":
-        dashboard_home(owner_id)
+        dashboard(owner_id)
+
     elif page == "Hotel Profile":
         hotel_profile(owner_id)
+
     elif page == "Manage Rooms":
         manage_rooms(owner_id)
+
     elif page == "Reservations":
         reservations(owner_id)
-    elif page == "Logout":
-        logout()
 
+    elif page == "Public Booking Preview":
+        booking_page()
 
-# ---------------- MAIN ----------------
-if st.session_state.logged_in:
-    owner_app()
 else:
-    st.sidebar.title("🏨 HotelPro")
+    if page == "Book a Room":
+        booking_page()
 
-    page = st.sidebar.radio(
-        "Navigation",
-        ["Book Room", "Owner Login", "Owner Signup"]
-    )
-
-    if page == "Book Room":
-        public_booking_page()
-    elif page == "Owner Login":
-        login_page()
-    elif page == "Owner Signup":
-        signup_page()
+    elif page == "Owner Portal":
+        auth_page()
